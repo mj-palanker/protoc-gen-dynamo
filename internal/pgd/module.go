@@ -9,7 +9,6 @@ import (
 	"github.com/dave/jennifer/jen"
 	pgs "github.com/lyft/protoc-gen-star/v2"
 	pgsgo "github.com/lyft/protoc-gen-star/v2/lang/go"
-	"google.golang.org/protobuf/proto"
 
 	dynamopb "github.com/pquerna/protoc-gen-dynamo/dynamo/v1"
 )
@@ -83,31 +82,26 @@ const (
 	timestampType = "google.protobuf.Timestamp"
 )
 
-// resolveWritePriority returns the message's default write priority, with
-// UNSPECIFIED resolved to FAST so generated code never exposes UNSPECIFIED.
-func resolveWritePriority(mext *dynamopb.DynamoMessageOptions) dynamopb.WritePriority {
-	p := mext.GetWritePriority()
-	if p == dynamopb.WritePriority_WRITE_PRIORITY_UNSPECIFIED {
-		return dynamopb.WritePriority_WRITE_PRIORITY_FAST
-	}
-	return p
-}
-
 // writePriorityAttrValue returns the stored string for the message's default
 // write priority. UNSPECIFIED resolves to FAST. The string comes from the
 // (dynamo.v1.attr_value) option on the compiled-in enum, so stored values ship
 // with the plugin version.
 func writePriorityAttrValue(mext *dynamopb.DynamoMessageOptions) (string, error) {
-	p := resolveWritePriority(mext)
-	ev := p.Descriptor().Values().ByNumber(p.Number())
-	if ev == nil {
-		return "", fmt.Errorf("unknown write_priority %d", p)
-	}
-	s, _ := proto.GetExtension(ev.Options(), dynamopb.E_AttrValue).(string)
-	if s == "" {
-		return "", fmt.Errorf("write_priority %s has no (dynamo.v1.attr_value)", ev.Name())
+	p := mext.GetWritePriority()
+	s, ok := p.AttrValue()
+	if !ok {
+		return "", fmt.Errorf("write_priority %s has no (dynamo.v1.attr_value)", p)
 	}
 	return s, nil
+}
+
+// attributeName returns the DynamoDB attribute name for an exposed field: its
+// (dynamo.v1.field).name if set, otherwise its snake-case name.
+func attributeName(field pgs.Field, fext *dynamopb.DynamoFieldOptions) string {
+	if fext.Name != "" {
+		return fext.Name
+	}
+	return field.Name().LowerSnakeCase().String()
 }
 
 // emittedAttributeNames lists the top-level attributes the generator writes
@@ -848,7 +842,7 @@ func (m *Module) applyUtilityFuncs(f *jen.File, in pgs.File) error {
 		// Default write priority for changes to this type. Keyless messages are
 		// never top-level items, so they carry no priority.
 		if len(mext.Key) > 0 {
-			wp := jen.Qual(dynamoV1Pkg, "WritePriority_"+resolveWritePriority(&mext).String())
+			wp := jen.Qual(dynamoV1Pkg, "WritePriority_"+mext.GetWritePriority().Resolved().String())
 
 			f.Func().Id(structName.String()+"DefaultWritePriority").Params().Qual(dynamoV1Pkg, "WritePriority").Block(
 				jen.Return(wp.Clone()),
@@ -1106,10 +1100,7 @@ func exposedAttributeNames(msg pgs.Message) (map[string]string, error) {
 		if !ok || !fext.Expose {
 			continue
 		}
-		attr := field.Name().LowerSnakeCase().String()
-		if fext.Name != "" {
-			attr = fext.Name
-		}
+		attr := attributeName(field, &fext)
 		if prev, dup := exposed[attr]; dup {
 			return nil, fmt.Errorf("exposed fields %s and %s both use attribute name %q", prev, field.FullyQualifiedName(), attr)
 		}
@@ -1424,10 +1415,7 @@ func (m *Module) applyMarshalMsgV2(f *jen.File, msg pgs.Message, mext *dynamopb.
 		}
 
 		avt := getAVType(field, &fext)
-		fieldName := jen.Lit(field.Name().LowerSnakeCase().String())
-		if fext.Name != "" {
-			fieldName = jen.Lit(fext.Name)
-		}
+		fieldName := jen.Lit(attributeName(field, &fext))
 
 		switch avt {
 		case avt_bytes:

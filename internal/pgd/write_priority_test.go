@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	dynamopb "github.com/pquerna/protoc-gen-dynamo/dynamo/v1"
+	"github.com/pquerna/protoc-gen-dynamo/pkg/dynamoattr"
 )
 
 func TestWritePriorityAttrValue(t *testing.T) {
@@ -153,5 +154,13 @@ func TestValidateAttributeNames(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The generator and pkg/dynamoattr each define the attribute name, to keep the
+// generator free of runtime imports. They must agree.
+func TestWritePriorityFieldMatchesRuntime(t *testing.T) {
+	if writePriorityField != dynamoattr.WritePriorityAttr {
+		t.Fatalf("generator writes %q, dynamoattr reads %q", writePriorityField, dynamoattr.WritePriorityAttr)
 	}
 }

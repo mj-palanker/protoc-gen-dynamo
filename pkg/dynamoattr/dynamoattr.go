@@ -4,7 +4,6 @@ package dynamoattr
 
 import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"google.golang.org/protobuf/proto"
 
 	dynamov1 "github.com/pquerna/protoc-gen-dynamo/dynamo/v1"
 )
@@ -16,36 +15,32 @@ import (
 // see it on the stream record.
 const WritePriorityAttr = "wp"
 
-var (
-	priorityToAttr = map[dynamov1.WritePriority]string{}
-	attrToPriority = map[string]dynamov1.WritePriority{}
-)
+var attrToPriority = map[string]dynamov1.WritePriority{}
 
-// The maps are built from the attr_value enum-value option, the same source
-// the generator reads, so the two cannot disagree.
+// The reverse map is built from the attr_value enum-value option, the same
+// source the generator reads, so the two cannot disagree.
 func init() {
 	values := dynamov1.WritePriority(0).Descriptor().Values()
 	for i := 0; i < values.Len(); i++ {
-		ev := values.Get(i)
-		s, _ := proto.GetExtension(ev.Options(), dynamov1.E_AttrValue).(string)
-		if s == "" {
+		p := dynamov1.WritePriority(values.Get(i).Number())
+		if p == dynamov1.WritePriority_WRITE_PRIORITY_UNSPECIFIED {
 			continue
 		}
-		p := dynamov1.WritePriority(ev.Number())
-		priorityToAttr[p] = s
-		attrToPriority[s] = p
+		if s, ok := p.AttrValue(); ok {
+			attrToPriority[s] = p
+		}
 	}
-	priorityToAttr[dynamov1.WritePriority_WRITE_PRIORITY_UNSPECIFIED] = priorityToAttr[dynamov1.WritePriority_WRITE_PRIORITY_FAST]
 }
 
 // WritePriorityAttrValue returns the stored string for p. UNSPECIFIED maps to
-// the FAST value. A value unknown to this build (e.g. a number from a newer
-// producer) also maps to FAST.
+// the FAST value. A value unknown to this build (e.g. an out-of-range cast)
+// also maps to FAST.
 func WritePriorityAttrValue(p dynamov1.WritePriority) string {
-	if s, ok := priorityToAttr[p]; ok {
+	if s, ok := p.AttrValue(); ok {
 		return s
 	}
-	return priorityToAttr[dynamov1.WritePriority_WRITE_PRIORITY_FAST]
+	s, _ := dynamov1.WritePriority_WRITE_PRIORITY_FAST.AttrValue()
+	return s
 }
 
 // ParseWritePriority maps a stored string back to the enum. ok is false for an
