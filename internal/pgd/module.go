@@ -95,6 +95,16 @@ func writePriorityAttrValue(mext *dynamopb.DynamoMessageOptions) (string, error)
 	return s, nil
 }
 
+// validateWritePriority rejects write_priority on a keyless message. Keyless
+// messages are only ever embedded, never written as items, so there is nothing
+// to stamp and the option would otherwise be silently ignored.
+func validateWritePriority(msgName string, mext *dynamopb.DynamoMessageOptions) error {
+	if len(mext.GetKey()) == 0 && mext.GetWritePriority() != dynamopb.WritePriority_WRITE_PRIORITY_UNSPECIFIED {
+		return fmt.Errorf("write_priority is set on message %s, which has no key: only keyed messages are written as items, and an embedded message does not pass its priority to its parent", msgName)
+	}
+	return nil
+}
+
 // attributeName returns the DynamoDB attribute name for an exposed field: its
 // (dynamo.v1.field).name if set, otherwise its snake-case name.
 func attributeName(field pgs.Field, fext *dynamopb.DynamoFieldOptions) string {
@@ -1128,6 +1138,10 @@ func (m *Module) applyMarshal(f *jen.File, in pgs.File) error {
 				m.Logf("Shard configuration validation failed: %s", err)
 				m.Fail("code generation failed")
 			}
+		}
+
+		if err := validateWritePriority(msg.FullyQualifiedName(), &mext); err != nil {
+			m.Failf("Write priority validation failed: %s", err)
 		}
 
 		exposed, err := exposedAttributeNames(msg)

@@ -164,3 +164,34 @@ func TestWritePriorityFieldMatchesRuntime(t *testing.T) {
 		t.Fatalf("generator writes %q, dynamoattr reads %q", writePriorityField, dynamoattr.WritePriorityAttr)
 	}
 }
+
+func TestValidateWritePriority(t *testing.T) {
+	const msgName = "test.v1.Widget"
+	keyed := []*dynamopb.Key{{PkFields: []string{"tenant_id"}, SkFields: []string{"id"}}}
+
+	cases := []struct {
+		name    string
+		mext    *dynamopb.DynamoMessageOptions
+		wantErr bool
+	}{
+		{name: "keyless, unset", mext: &dynamopb.DynamoMessageOptions{}},
+		{name: "keyed, unset", mext: &dynamopb.DynamoMessageOptions{Key: keyed}},
+		{name: "keyed, slow", mext: &dynamopb.DynamoMessageOptions{Key: keyed, WritePriority: dynamopb.WritePriority_WRITE_PRIORITY_SLOW}},
+		{name: "keyless, slow", mext: &dynamopb.DynamoMessageOptions{WritePriority: dynamopb.WritePriority_WRITE_PRIORITY_SLOW}, wantErr: true},
+		{name: "keyless, fast", mext: &dynamopb.DynamoMessageOptions{WritePriority: dynamopb.WritePriority_WRITE_PRIORITY_FAST}, wantErr: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateWritePriority(msgName, tc.mext)
+			switch {
+			case !tc.wantErr && err != nil:
+				t.Fatalf("expected no error, got %v", err)
+			case tc.wantErr && err == nil:
+				t.Fatal("expected an error, got nil")
+			case tc.wantErr && !strings.Contains(err.Error(), msgName):
+				t.Fatalf("error should name the message %q, got %v", msgName, err)
+			}
+		})
+	}
+}
