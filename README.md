@@ -150,6 +150,73 @@ When serialized, this will generate the following DynamodDB Attributes:
 }
 ```
 
+## Item attributes
+
+The generator writes these top-level attributes on each item, in addition to
+exposed fields:
+
+| Attribute | Type | When |
+|---|---|---|
+| `pk`, `sk` | S | The first `(dynamo.v1.msg).key` |
+| `gsiNpk`, `gsiNsk` | S | Each further key, N = 1, 2, … |
+| `typ` | S | Always: the fully-qualified message name |
+| `value` | B | Always: the zstd-compressed message |
+| `version` | N | The message has an `updated_at` timestamp |
+| `deleted` | BOOL | The message has a `deleted_at` timestamp |
+| `wp` | S | The message has at least one key |
+
+An exposed field cannot use any of these names for its message, either through
+its snake-case name or `(dynamo.v1.field).name`. Codegen fails with an error
+naming the field and the attribute. Names are only reserved where they are
+emitted, so for example `version` is free on a message without `updated_at`.
+
+### Write priority
+
+`wp` is the priority of the write. It is stamped on the item only so that
+DynamoDB Streams consumers can see it on the change record: it characterizes
+how the change should be processed, not the object. It is not part of the
+message, is not on the Go struct, and is ignored on unmarshal.
+
+Each keyed message has a default, set with `(dynamo.v1.msg).write_priority`:
+
+```protobuf
+message BulkRecord {
+  option (dynamo.v1.msg).key = {pk_fields: ["tenant_id"] sk_fields: ["id"]};
+  option (dynamo.v1.msg).write_priority = WRITE_PRIORITY_SLOW;
+  ...
+}
+```
+
+| Value | Stored as |
+|---|---|
+| `WRITE_PRIORITY_UNSPECIFIED` (the default) | `"fast"` |
+| `WRITE_PRIORITY_FAST` | `"fast"` |
+| `WRITE_PRIORITY_SLOW` | `"slow"` |
+
+The stored strings are pinned by the `(dynamo.v1.attr_value)` option on each
+enum value and are a permanent data contract. New values may be added; existing
+strings are never changed.
+
+The generator emits `<Struct>DefaultWritePriority()` and
+`(*<Struct>).DynamoDefaultWritePriority()`, which return the resolved default
+(never UNSPECIFIED).
+
+Use `pkg/dynamoattr` to change the priority of an individual write or to read
+it back:
+
+```go
+item, err := rec.MarshalDynamoItem()
+// ...
+dynamoattr.SetWritePriority(item, dynamov1.WritePriority_WRITE_PRIORITY_FAST)
+
+// In a stream consumer, from the "wp" S value of the new image:
+p, ok := dynamoattr.ParseWritePriority(s)
+if !ok {
+	// Missing (written before wp existed) or written by a newer producer.
+	// Tolerate it; do not fail the record.
+}
+```
+
 ## License
 
 `protoc-gen-dynamo` is licensed under the [Apache License, Version 2.0](./LICENSE)

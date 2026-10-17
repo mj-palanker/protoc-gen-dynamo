@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/cespare/xxhash/v2"
+	dynamov1 "github.com/pquerna/protoc-gen-dynamo/dynamo/v1"
 	"github.com/pquerna/protoc-gen-dynamo/pkg/protozstd"
 	"strconv"
 	"strings"
@@ -80,6 +81,7 @@ func (p *Store) MarshalDynamoDBAttributeValue() (types.AttributeValue, error) {
 		"typ":           v7,
 		"value":         v6,
 		"version":       &types.AttributeValueMemberN{Value: (strconv.FormatInt(v5, 10))},
+		"wp":            &types.AttributeValueMemberS{Value: "fast"},
 	}}
 	return av, nil
 }
@@ -162,6 +164,7 @@ func (p *User) MarshalDynamoDBAttributeValue() (types.AttributeValue, error) {
 		"typ":     v9,
 		"value":   v8,
 		"version": &types.AttributeValueMemberN{Value: (strconv.FormatInt(v7, 10))},
+		"wp":      &types.AttributeValueMemberS{Value: "fast"},
 	}}
 	return av, nil
 }
@@ -233,6 +236,7 @@ func (p *StoreV2) MarshalDynamoDBAttributeValue() (types.AttributeValue, error) 
 		"typ":           v7,
 		"value":         v6,
 		"version":       &types.AttributeValueMemberN{Value: (strconv.FormatInt(v5, 10))},
+		"wp":            &types.AttributeValueMemberS{Value: "fast"},
 	}}
 	return av, nil
 }
@@ -334,6 +338,82 @@ func (p *UserV2) MarshalDynamoDBAttributeValue() (types.AttributeValue, error) {
 		"typ":     v9,
 		"value":   v8,
 		"version": &types.AttributeValueMemberN{Value: (strconv.FormatInt(v7, 10))},
+		"wp":      &types.AttributeValueMemberS{Value: "fast"},
+	}}
+	return av, nil
+}
+
+func (p *BulkRecord) MarshalDynamo() (types.AttributeValue, error) {
+	return p.MarshalDynamoDBAttributeValue()
+}
+
+func (p *BulkRecord) MarshalDynamoItem() (map[string]types.AttributeValue, error) {
+	av, err := p.MarshalDynamoDBAttributeValue()
+	if err != nil {
+		return nil, err
+	}
+	avm, ok := av.(*types.AttributeValueMemberM)
+	if !ok {
+		return nil, fmt.Errorf("unable to marshal: expected type *types.AttributeValueMemberM, got %T", av)
+	}
+	return avm.Value, nil
+}
+
+func (p *BulkRecord) MarshalDynamoDBAttributeValue() (types.AttributeValue, error) {
+	var sb strings.Builder
+	var err error
+	sb.Reset()
+	_, _ = sb.WriteString("examplepb_v1_bulk_record:")
+	_, _ = sb.WriteString(p.GetTenantId())
+	v1 := &types.AttributeValueMemberS{Value: sb.String()}
+	sb.Reset()
+	_, _ = sb.WriteString(p.GetId())
+	v2 := &types.AttributeValueMemberS{Value: sb.String()}
+	v3buf, err := protozstd.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	v3 := &types.AttributeValueMemberB{Value: v3buf}
+	v4 := &types.AttributeValueMemberS{Value: "examplepb.v1.BulkRecord"}
+	var av types.AttributeValue
+	av = &types.AttributeValueMemberM{Value: map[string]types.AttributeValue{
+		"pk":    v1,
+		"sk":    v2,
+		"typ":   v4,
+		"value": v3,
+		"wp":    &types.AttributeValueMemberS{Value: "slow"},
+	}}
+	return av, nil
+}
+
+func (p *StoreRef) MarshalDynamo() (types.AttributeValue, error) {
+	return p.MarshalDynamoDBAttributeValue()
+}
+
+func (p *StoreRef) MarshalDynamoItem() (map[string]types.AttributeValue, error) {
+	av, err := p.MarshalDynamoDBAttributeValue()
+	if err != nil {
+		return nil, err
+	}
+	avm, ok := av.(*types.AttributeValueMemberM)
+	if !ok {
+		return nil, fmt.Errorf("unable to marshal: expected type *types.AttributeValueMemberM, got %T", av)
+	}
+	return avm.Value, nil
+}
+
+func (p *StoreRef) MarshalDynamoDBAttributeValue() (types.AttributeValue, error) {
+	var err error
+	v1buf, err := protozstd.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	v1 := &types.AttributeValueMemberB{Value: v1buf}
+	v2 := &types.AttributeValueMemberS{Value: "examplepb.v1.StoreRef"}
+	var av types.AttributeValue
+	av = &types.AttributeValueMemberM{Value: map[string]types.AttributeValue{
+		"typ":   v2,
+		"value": v1,
 	}}
 	return av, nil
 }
@@ -483,6 +563,80 @@ func (p *UserV2) UnmarshalDynamo(av types.AttributeValue) error {
 }
 
 func (p *UserV2) UnmarshalDynamoItem(av map[string]types.AttributeValue) error {
+	return p.UnmarshalDynamoDBAttributeValue(&types.AttributeValueMemberM{Value: av})
+}
+
+func (p *BulkRecord) UnmarshalDynamoDBAttributeValue(av types.AttributeValue) error {
+	m, ok := av.(*types.AttributeValueMemberM)
+	if !ok {
+		return fmt.Errorf("unable to unmarshal: expected type *types.AttributeValueMemberM, got %T", av)
+	}
+	typ, ok := m.Value["typ"]
+	if !ok {
+		return fmt.Errorf("dynamo: typ missing")
+	}
+	t, ok := typ.(*types.AttributeValueMemberS)
+	if !ok {
+		return fmt.Errorf("unable to unmarshal: expected type *types.AttributeValueMemberS, got %T", typ)
+	}
+	if t.Value != "examplepb.v1.BulkRecord" {
+		return fmt.Errorf("dynamo: _type mismatch: examplepb.v1.BulkRecord expected, got: '%s'", typ)
+	}
+	value, ok := m.Value["value"]
+	if !ok {
+		return fmt.Errorf("dynamo: value missing")
+	}
+	v, ok := value.(*types.AttributeValueMemberB)
+	if !ok {
+		return fmt.Errorf("unable to unmarshal: expected type *types.AttributeValueMemberB, got %T", value)
+	}
+	var data []byte
+	data = v.Value
+	return protozstd.Unmarshal(data, p)
+}
+
+func (p *BulkRecord) UnmarshalDynamo(av types.AttributeValue) error {
+	return p.UnmarshalDynamoDBAttributeValue(av)
+}
+
+func (p *BulkRecord) UnmarshalDynamoItem(av map[string]types.AttributeValue) error {
+	return p.UnmarshalDynamoDBAttributeValue(&types.AttributeValueMemberM{Value: av})
+}
+
+func (p *StoreRef) UnmarshalDynamoDBAttributeValue(av types.AttributeValue) error {
+	m, ok := av.(*types.AttributeValueMemberM)
+	if !ok {
+		return fmt.Errorf("unable to unmarshal: expected type *types.AttributeValueMemberM, got %T", av)
+	}
+	typ, ok := m.Value["typ"]
+	if !ok {
+		return fmt.Errorf("dynamo: typ missing")
+	}
+	t, ok := typ.(*types.AttributeValueMemberS)
+	if !ok {
+		return fmt.Errorf("unable to unmarshal: expected type *types.AttributeValueMemberS, got %T", typ)
+	}
+	if t.Value != "examplepb.v1.StoreRef" {
+		return fmt.Errorf("dynamo: _type mismatch: examplepb.v1.StoreRef expected, got: '%s'", typ)
+	}
+	value, ok := m.Value["value"]
+	if !ok {
+		return fmt.Errorf("dynamo: value missing")
+	}
+	v, ok := value.(*types.AttributeValueMemberB)
+	if !ok {
+		return fmt.Errorf("unable to unmarshal: expected type *types.AttributeValueMemberB, got %T", value)
+	}
+	var data []byte
+	data = v.Value
+	return protozstd.Unmarshal(data, p)
+}
+
+func (p *StoreRef) UnmarshalDynamo(av types.AttributeValue) error {
+	return p.UnmarshalDynamoDBAttributeValue(av)
+}
+
+func (p *StoreRef) UnmarshalDynamoItem(av map[string]types.AttributeValue) error {
 	return p.UnmarshalDynamoDBAttributeValue(&types.AttributeValueMemberM{Value: av})
 }
 
@@ -920,7 +1074,35 @@ func (p *UserV2) Gsi2PartitionKeysWithShard() []string {
 	return keys
 }
 
+func (p *BulkRecord) PartitionKey() string {
+	var sb strings.Builder
+	sb.Reset()
+	_, _ = sb.WriteString("examplepb_v1_bulk_record:")
+	_, _ = sb.WriteString(p.GetTenantId())
+	return sb.String()
+}
+
+func BulkRecordPartitionKey(tenantId *string) string {
+	return (&BulkRecord_builder{TenantId: tenantId}).Build().PartitionKey()
+}
+
+func (p *BulkRecord) SortKey() string {
+	return p.GetId()
+}
+
+func BulkRecordSortKey(id *string) string {
+	return (&BulkRecord_builder{Id: id}).Build().SortKey()
+}
+
 func (_ *Store) Unsharded() {}
+
+func StoreDefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_FAST
+}
+
+func (p *Store) DynamoDefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_FAST
+}
 
 func (p *User) GetShardFromPartitionKey() (uint32, error) {
 	pk := p.PartitionKey()
@@ -944,7 +1126,23 @@ func UserShardCount() uint32 {
 	return 32
 }
 
+func UserDefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_FAST
+}
+
+func (p *User) DynamoDefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_FAST
+}
+
 func (_ *StoreV2) Unsharded() {}
+
+func StoreV2DefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_FAST
+}
+
+func (p *StoreV2) DynamoDefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_FAST
+}
 
 func (_ *UserV2) Unsharded() {}
 
@@ -990,4 +1188,22 @@ func (p *UserV2) GetGsi2ShardCount() uint32 {
 
 func UserV2Gsi2ShardCount() uint32 {
 	return 64
+}
+
+func UserV2DefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_FAST
+}
+
+func (p *UserV2) DynamoDefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_FAST
+}
+
+func (_ *BulkRecord) Unsharded() {}
+
+func BulkRecordDefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_SLOW
+}
+
+func (p *BulkRecord) DynamoDefaultWritePriority() dynamov1.WritePriority {
+	return dynamov1.WritePriority_WRITE_PRIORITY_SLOW
 }

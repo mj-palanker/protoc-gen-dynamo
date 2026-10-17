@@ -22,13 +22,71 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Priority of a write. Although it is stored on the item (as the "wp"
+// attribute), it characterizes how the change itself should be processed,
+// not the object: change-stream consumers use it to tell high-priority writes
+// from bulk ones. It is not part of the message and is ignored on unmarshal.
+type WritePriority int32
+
+const (
+	// Treated as FAST. Exists so an unset option has a defined meaning.
+	WritePriority_WRITE_PRIORITY_UNSPECIFIED WritePriority = 0
+	WritePriority_WRITE_PRIORITY_FAST        WritePriority = 1
+	WritePriority_WRITE_PRIORITY_SLOW        WritePriority = 2
+)
+
+// Enum value maps for WritePriority.
+var (
+	WritePriority_name = map[int32]string{
+		0: "WRITE_PRIORITY_UNSPECIFIED",
+		1: "WRITE_PRIORITY_FAST",
+		2: "WRITE_PRIORITY_SLOW",
+	}
+	WritePriority_value = map[string]int32{
+		"WRITE_PRIORITY_UNSPECIFIED": 0,
+		"WRITE_PRIORITY_FAST":        1,
+		"WRITE_PRIORITY_SLOW":        2,
+	}
+)
+
+func (x WritePriority) Enum() *WritePriority {
+	p := new(WritePriority)
+	*p = x
+	return p
+}
+
+func (x WritePriority) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WritePriority) Descriptor() protoreflect.EnumDescriptor {
+	return file_dynamo_v1_dynamo_proto_enumTypes[0].Descriptor()
+}
+
+func (WritePriority) Type() protoreflect.EnumType {
+	return &file_dynamo_v1_dynamo_proto_enumTypes[0]
+}
+
+func (x WritePriority) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WritePriority.Descriptor instead.
+func (WritePriority) EnumDescriptor() ([]byte, []int) {
+	return file_dynamo_v1_dynamo_proto_rawDescGZIP(), []int{0}
+}
+
 type DynamoMessageOptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Disables generation for this message
 	Disabled bool `protobuf:"varint,1,opt,name=disabled,proto3" json:"disabled,omitempty"`
 	// A compound value that can be used as a partition and sort key. Multiple
 	// keys will be added as gsi keys after the first.
-	Key           []*Key `protobuf:"bytes,2,rep,name=key,proto3" json:"key,omitempty"`
+	Key []*Key `protobuf:"bytes,2,rep,name=key,proto3" json:"key,omitempty"`
+	// Default write priority for changes to this type, stamped on every keyed
+	// item as the "wp" attribute. Callers may override it per write on the
+	// marshalled item (see pkg/dynamoattr).
+	WritePriority WritePriority `protobuf:"varint,3,opt,name=write_priority,json=writePriority,proto3,enum=dynamo.v1.WritePriority" json:"write_priority,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -75,6 +133,13 @@ func (x *DynamoMessageOptions) GetKey() []*Key {
 		return x.Key
 	}
 	return nil
+}
+
+func (x *DynamoMessageOptions) GetWritePriority() WritePriority {
+	if x != nil {
+		return x.WritePriority
+	}
+	return WritePriority_WRITE_PRIORITY_UNSPECIFIED
 }
 
 type Key struct {
@@ -329,6 +394,14 @@ var file_dynamo_v1_dynamo_proto_extTypes = []protoimpl.ExtensionInfo{
 		Filename:      "dynamo/v1/dynamo.proto",
 	},
 	{
+		ExtendedType:  (*descriptorpb.EnumValueOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         6000,
+		Name:          "dynamo.v1.attr_value",
+		Tag:           "bytes,6000,opt,name=attr_value",
+		Filename:      "dynamo/v1/dynamo.proto",
+	},
+	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
 		ExtensionType: (*DynamoFieldOptions)(nil),
 		Field:         6000,
@@ -344,20 +417,27 @@ var (
 	E_Msg = &file_dynamo_v1_dynamo_proto_extTypes[0]
 )
 
+// Extension fields to descriptorpb.EnumValueOptions.
+var (
+	// optional string attr_value = 6000;
+	E_AttrValue = &file_dynamo_v1_dynamo_proto_extTypes[1]
+)
+
 // Extension fields to descriptorpb.FieldOptions.
 var (
 	// optional dynamo.v1.DynamoFieldOptions field = 6000;
-	E_Field = &file_dynamo_v1_dynamo_proto_extTypes[1]
+	E_Field = &file_dynamo_v1_dynamo_proto_extTypes[2]
 )
 
 var File_dynamo_v1_dynamo_proto protoreflect.FileDescriptor
 
 const file_dynamo_v1_dynamo_proto_rawDesc = "" +
 	"\n" +
-	"\x16dynamo/v1/dynamo.proto\x12\tdynamo.v1\x1a google/protobuf/descriptor.proto\"T\n" +
+	"\x16dynamo/v1/dynamo.proto\x12\tdynamo.v1\x1a google/protobuf/descriptor.proto\"\x95\x01\n" +
 	"\x14DynamoMessageOptions\x12\x1a\n" +
 	"\bdisabled\x18\x01 \x01(\bR\bdisabled\x12 \n" +
-	"\x03key\x18\x02 \x03(\v2\x0e.dynamo.v1.KeyR\x03key\"\x89\x01\n" +
+	"\x03key\x18\x02 \x03(\v2\x0e.dynamo.v1.KeyR\x03key\x12?\n" +
+	"\x0ewrite_priority\x18\x03 \x01(\x0e2\x18.dynamo.v1.WritePriorityR\rwritePriority\"\x89\x01\n" +
 	"\x03Key\x12\x1b\n" +
 	"\tpk_fields\x18\x01 \x03(\tR\bpkFields\x12\x1b\n" +
 	"\tsk_fields\x18\x02 \x03(\tR\bskFields\x12\x19\n" +
@@ -376,8 +456,14 @@ const file_dynamo_v1_dynamo_proto_rawDesc = "" +
 	"unixSecond\x12\x1e\n" +
 	"\n" +
 	"unix_milli\x18\xad\x02 \x01(\bR\tunixMilli\x12\x1c\n" +
-	"\tunix_nano\x18\xae\x02 \x01(\bR\bunixNano:S\n" +
-	"\x03msg\x12\x1f.google.protobuf.MessageOptions\x18\xf0. \x01(\v2\x1f.dynamo.v1.DynamoMessageOptionsR\x03msg:S\n" +
+	"\tunix_nano\x18\xae\x02 \x01(\bR\bunixNano*u\n" +
+	"\rWritePriority\x12\x1e\n" +
+	"\x1aWRITE_PRIORITY_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x13WRITE_PRIORITY_FAST\x10\x01\x1a\b\x82\xf7\x02\x04fast\x12!\n" +
+	"\x13WRITE_PRIORITY_SLOW\x10\x02\x1a\b\x82\xf7\x02\x04slow:S\n" +
+	"\x03msg\x12\x1f.google.protobuf.MessageOptions\x18\xf0. \x01(\v2\x1f.dynamo.v1.DynamoMessageOptionsR\x03msg:A\n" +
+	"\n" +
+	"attr_value\x12!.google.protobuf.EnumValueOptions\x18\xf0. \x01(\tR\tattrValue:S\n" +
 	"\x05field\x12\x1d.google.protobuf.FieldOptions\x18\xf0. \x01(\v2\x1d.dynamo.v1.DynamoFieldOptionsR\x05fieldB\x91\x01\n" +
 	"\rcom.dynamo.v1B\vDynamoProtoP\x01Z.github.com/pquerna/protoc-gen-dynamo/dynamo/v1\xa2\x02\x03DXX\xaa\x02\tDynamo.V1\xca\x02\tDynamo\\V1\xe2\x02\x15Dynamo\\V1\\GPBMetadata\xea\x02\n" +
 	"Dynamo::V1b\x06proto3"
@@ -394,29 +480,34 @@ func file_dynamo_v1_dynamo_proto_rawDescGZIP() []byte {
 	return file_dynamo_v1_dynamo_proto_rawDescData
 }
 
+var file_dynamo_v1_dynamo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_dynamo_v1_dynamo_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_dynamo_v1_dynamo_proto_goTypes = []any{
-	(*DynamoMessageOptions)(nil),        // 0: dynamo.v1.DynamoMessageOptions
-	(*Key)(nil),                         // 1: dynamo.v1.Key
-	(*ShardOptions)(nil),                // 2: dynamo.v1.ShardOptions
-	(*DynamoFieldOptions)(nil),          // 3: dynamo.v1.DynamoFieldOptions
-	(*Types)(nil),                       // 4: dynamo.v1.Types
-	(*descriptorpb.MessageOptions)(nil), // 5: google.protobuf.MessageOptions
-	(*descriptorpb.FieldOptions)(nil),   // 6: google.protobuf.FieldOptions
+	(WritePriority)(0),                    // 0: dynamo.v1.WritePriority
+	(*DynamoMessageOptions)(nil),          // 1: dynamo.v1.DynamoMessageOptions
+	(*Key)(nil),                           // 2: dynamo.v1.Key
+	(*ShardOptions)(nil),                  // 3: dynamo.v1.ShardOptions
+	(*DynamoFieldOptions)(nil),            // 4: dynamo.v1.DynamoFieldOptions
+	(*Types)(nil),                         // 5: dynamo.v1.Types
+	(*descriptorpb.MessageOptions)(nil),   // 6: google.protobuf.MessageOptions
+	(*descriptorpb.EnumValueOptions)(nil), // 7: google.protobuf.EnumValueOptions
+	(*descriptorpb.FieldOptions)(nil),     // 8: google.protobuf.FieldOptions
 }
 var file_dynamo_v1_dynamo_proto_depIdxs = []int32{
-	1, // 0: dynamo.v1.DynamoMessageOptions.key:type_name -> dynamo.v1.Key
-	2, // 1: dynamo.v1.Key.shard:type_name -> dynamo.v1.ShardOptions
-	4, // 2: dynamo.v1.DynamoFieldOptions.type:type_name -> dynamo.v1.Types
-	5, // 3: dynamo.v1.msg:extendee -> google.protobuf.MessageOptions
-	6, // 4: dynamo.v1.field:extendee -> google.protobuf.FieldOptions
-	0, // 5: dynamo.v1.msg:type_name -> dynamo.v1.DynamoMessageOptions
-	3, // 6: dynamo.v1.field:type_name -> dynamo.v1.DynamoFieldOptions
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	5, // [5:7] is the sub-list for extension type_name
-	3, // [3:5] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	2, // 0: dynamo.v1.DynamoMessageOptions.key:type_name -> dynamo.v1.Key
+	0, // 1: dynamo.v1.DynamoMessageOptions.write_priority:type_name -> dynamo.v1.WritePriority
+	3, // 2: dynamo.v1.Key.shard:type_name -> dynamo.v1.ShardOptions
+	5, // 3: dynamo.v1.DynamoFieldOptions.type:type_name -> dynamo.v1.Types
+	6, // 4: dynamo.v1.msg:extendee -> google.protobuf.MessageOptions
+	7, // 5: dynamo.v1.attr_value:extendee -> google.protobuf.EnumValueOptions
+	8, // 6: dynamo.v1.field:extendee -> google.protobuf.FieldOptions
+	1, // 7: dynamo.v1.msg:type_name -> dynamo.v1.DynamoMessageOptions
+	4, // 8: dynamo.v1.field:type_name -> dynamo.v1.DynamoFieldOptions
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	7, // [7:9] is the sub-list for extension type_name
+	4, // [4:7] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_dynamo_v1_dynamo_proto_init() }
@@ -429,13 +520,14 @@ func file_dynamo_v1_dynamo_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dynamo_v1_dynamo_proto_rawDesc), len(file_dynamo_v1_dynamo_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   5,
-			NumExtensions: 2,
+			NumExtensions: 3,
 			NumServices:   0,
 		},
 		GoTypes:           file_dynamo_v1_dynamo_proto_goTypes,
 		DependencyIndexes: file_dynamo_v1_dynamo_proto_depIdxs,
+		EnumInfos:         file_dynamo_v1_dynamo_proto_enumTypes,
 		MessageInfos:      file_dynamo_v1_dynamo_proto_msgTypes,
 		ExtensionInfos:    file_dynamo_v1_dynamo_proto_extTypes,
 	}.Build()

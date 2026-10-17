@@ -167,3 +167,20 @@ message UserV2 {
   string email = 8;
   BasicEnum an_enum = 9;
 }
+
+// Bulk-written records: changes default to the slow processing lane.
+message BulkRecord {
+  option (dynamo.v1.msg).key = {
+    pk_fields: ["tenant_id"]
+    sk_fields: ["id"]
+  };
+  option (dynamo.v1.msg).write_priority = WRITE_PRIORITY_SLOW;
+  string tenant_id = 1;
+  string id = 2;
+  string payload = 3;
+}
+
+// Keyless: only ever embedded, never written as a top-level item.
+message StoreRef {
+  string id = 1;
+}
